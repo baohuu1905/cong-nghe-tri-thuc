@@ -5,7 +5,7 @@ from datetime import datetime
 from vnstock import *
 import plotly.graph_objects as go
 
-from model import PricePredictor
+from model import RLPricePredictor
 import numpy as np
 
 def display():
@@ -92,7 +92,8 @@ if st.sidebar.button("Xem thông tin dữ liệu"):
 
 
 
-predictor = PricePredictor()
+predictor = RLPricePredictor()
+predictor.load_model()
 
 st.sidebar.title("Nhập thông tin giao dịch")
 
@@ -101,7 +102,7 @@ if st.sidebar.button("Huấn luyện mô hình dự đoán"):
     with st.spinner("Đang huấn luyện mô hình..."):
         predictor.train_model(symbol=st.session_state.get('selected_company', 'TCB'))
     st.sidebar.success("Mô hình đã được huấn luyện!")
-    st.sidebar.success("Mã công ty: " + selected_company + "\n\nMô hình dự đoán: LinerRegression()" + "\n\nMô hình chuẩn hóa: MinMaxScaler()")
+    st.sidebar.success("Mã công ty: " + selected_company + "\n\nMô hình dự đoán: RL Q-learning" + "\n\nMô hình chuẩn hóa: MinMaxScaler()")
 
     
 # Prediction inputs
@@ -137,49 +138,51 @@ with col2:
 if predict_btn:
     with st.spinner('Đang thực hiện dự đoán...'):
         try:
-            predicted_price = predictor.predict_price(open_val, high_val, low_val, volume_val)
-            st.success(f"💰 Giá dự đoán cho {selected_company}: {predicted_price:,.2f} VND")
-            
-            # Save to history
-            new_pred = pd.DataFrame({
-                'time': [datetime.now()],
-                'symbol': [selected_company],
-                'predicted_price': [predicted_price]
-            })
-            st.session_state.prediction_history = pd.concat(
-                [st.session_state.prediction_history, new_pred],
-                ignore_index=True
-            )
-            
-            # Show history chart and table
-            if not st.session_state.prediction_history.empty:
-                st.subheader("📊 Lịch sử dự đoán")
+            if not predictor.trained:
+                st.error("Mô hình chưa được huấn luyện hoặc chưa được tải. Vui lòng huấn luyện mô hình trước.")
+            else:
+                predicted_price = predictor.predict_price(open_val, high_val, low_val, volume_val)
+                st.success(f"💰 Giá dự đoán cho {selected_company}: {predicted_price:,.2f} VND")
                 
-                # Display all predictions in a table
-                st.dataframe(
-                    st.session_state.prediction_history.sort_values('time', ascending=False),
-                    column_config={
-                        "time": "Thời gian",
-                        "symbol": "Mã CP", 
-                        "predicted_price": st.column_config.NumberColumn(
-                            "Giá dự đoán (VND)",
-                            format="%,.2f"
-                        )
-                    },
-                    use_container_width=True
+                # Save to history
+                new_pred = pd.DataFrame({
+                    'time': [datetime.now()],
+                    'symbol': [selected_company],
+                    'predicted_price': [predicted_price]
+                })
+                st.session_state.prediction_history = pd.concat(
+                    [st.session_state.prediction_history, new_pred],
+                    ignore_index=True
                 )
-                
-                # Show box plot visualization
-                fig = px.box(
-                    st.session_state.prediction_history,
-                    x='symbol',
-                    y='predicted_price',
-                    color='symbol',
-                    labels={'predicted_price': 'Giá (VND)', 'symbol': 'Mã CP'},
-                    title=f'Phân bố giá dự đoán cho {selected_company}'
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                
+                print(predicted_price)
+                # Show history chart and table
+                if not st.session_state.prediction_history.empty:
+                    st.subheader("📊 Lịch sử dự đoán")
+                    
+                    # Display all predictions in a table
+                    st.dataframe(
+                        st.session_state.prediction_history.sort_values('time', ascending=False),
+                        column_config={
+                            "time": "Thời gian",
+                            "symbol": "Mã CP", 
+                            "predicted_price": st.column_config.NumberColumn(
+                                "Giá dự đoán (VND)",
+                                format="%,.2f"
+                            )
+                        },
+                        use_container_width=True
+                    )
+                    
+                    # Show box plot visualization
+                    fig = px.box(
+                        st.session_state.prediction_history,
+                        x='symbol',
+                        y='predicted_price',
+                        color='symbol',
+                        labels={'predicted_price': 'Giá (VND)', 'symbol': 'Mã CP'},
+                        title=f'Phân bố giá dự đoán cho {selected_company}'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"Lỗi: {str(e)}")
 
